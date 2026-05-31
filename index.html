@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Управление ипотечным ML-сервисом</title>
+    <style>
+        body { font-family: sans-serif; margin: 30px; background-color: #f7f9fa; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        label { display: inline-block; width: 180px; margin-bottom: 8px; }
+        input, select { padding: 6px; width: 200px; margin-bottom: 10px; }
+        button { padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background: #f1f1f1; padding: 10px; border-radius: 4px; max-height: 250px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Панель кредитного специалиста (ML-сервис)</h2>
+
+    <div class="section">
+        <h3>1. Загрузка модели машинного обучения</h3>
+        <input type="file" id="modelFile" accept=".pkl">
+        <button onclick="uploadModel()">Загрузить .pkl модель</button>
+        <div id="modelStatus" style="margin-top: 10px; font-weight: bold;"></div>
+    </div>
+
+    <div class="section">
+        <h3>2. Оценка индивидуального клиента</h3>
+        <form id="predictForm" onsubmit="predictSingle(event)">
+            <label>Пол:</label>
+            <select id="gender"><option value="1">Мужской</option><option value="0">Женский</option></select><br>
+
+            <label>В браке:</label>
+            <select id="married"><option value="1">Да</option><option value="0">Нет</option></select><br>
+
+            <label>Высшее образование:</label>
+            <select id="education"><option value="1">Да</option><option value="0">Нет</option></select><br>
+
+            <label>Доход заявителя ($):</label>
+            <input type="number" id="income" value="5000" required><br>
+
+            <label>Сумма кредита (тыс.$):</label>
+            <input type="number" id="amount" value="150" required><br>
+
+            <label>Кредитная история:</label>
+            <select id="history"><option value="1">Чистая / Хорошая</option><option value="0">Плохая / Отсутствует</option></select><br>
+
+            <button type="submit">Получить вердикт</button>
+        </form>
+        <div id="predictResult" style="margin-top: 15px; font-size: 1.2em; font-weight: bold;"></div>
+    </div>
+
+    <div class="section">
+        <h3>3. Пакетное предсказание из файла CSV</h3>
+        <input type="file" id="csvFile" accept=".csv">
+        <button onclick="predictCSV()">Обработать файл</button>
+        <h4>Результаты парсинга файла:</h4>
+        <pre id="csvOutput">Здесь отобразятся результаты вычислений...</pre>
+    </div>
+</div>
+
+<script>
+    const API_URL = 'http://127.0.0.1:8000';
+
+    async function uploadModel() {
+        const fileInput = document.getElementById('modelFile');
+        if (!fileInput.files[0]) return alert('Выберите файл модели');
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const res = await fetch(`${API_URL}/upload-model`, { method: 'POST', body: formData });
+            const data = await res.json();
+            document.getElementById('modelStatus').innerText = data.detail ? `Ошибка: ${data.detail}` : `Статус: ${data.status} (${data.message})`;
+        } catch (err) {
+            alert('Не удалось отправить файл: ' + err.message);
+        }
+    }
+
+    async function predictSingle(e) {
+        e.preventDefault();
+        const payload = [{
+            Gender: parseInt(document.getElementById('gender').value),
+            Married: parseInt(document.getElementById('married').value),
+            Education: parseInt(document.getElementById('education').value),
+            ApplicantIncome: parseFloat(document.getElementById('income').value),
+            LoanAmount: parseFloat(document.getElementById('amount').value),
+            Credit_History: parseFloat(document.getElementById('history').value)
+        }];
+
+        try {
+            const res = await fetch(`${API_URL}/predict`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.status !== 200) {
+                document.getElementById('predictResult').innerText = "Ошибка: " + data.detail;
+                return;
+            }
+            const status = data[0].loan_status === 1 ? "🎉 ОДОБРЕНО" : "❌ ОТКАЗ";
+            document.getElementById('predictResult').innerText = `Решение системы: ${status}`;
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    async function predictCSV() {
+        const fileInput = document.getElementById('csvFile');
+        if (!fileInput.files[0]) return alert('Выберите файл CSV');
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const res = await fetch(`${API_URL}/predict-from-csv`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (res.status !== 200) {
+                document.getElementById('csvOutput').innerText = "Ошибка: " + data.detail;
+                return;
+            }
+            document.getElementById('csvOutput').innerText = JSON.stringify(data, null, 2);
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+</script>
+</body>
+</html>
